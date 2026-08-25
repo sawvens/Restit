@@ -136,7 +136,16 @@ async function fetchWithTimeout(url, ms=9000){
   try { return await fetch(url, {signal: ctrl.signal}); } finally { clearTimeout(t); }
 }
 async function geocode(query){
-  const url = `https://api-adresse.data.gouv.fr/search/?q=${encodeURIComponent(query)}&limit=1`;
+  const url = `https://data.geopf.fr/geocodage/search?q=${encodeURIComponent(query)}&limit=1`;
+  const res = await fetchWithTimeout(url);
+  if(!res.ok) throw new Error("geocode failed");
+  const data = await res.json();
+  if(!data.features || data.features.length===0) return null;
+  const [lon, lat] = data.features[0].geometry.coordinates;
+  return { lat, lon, label: data.features[0].properties.label };
+}
+async function geocodePostcode(postcode){
+  const url = `https://data.geopf.fr/geocodage/search?q=${encodeURIComponent(postcode)}&postcode=${encodeURIComponent(postcode)}&type=municipality&limit=1`;
   const res = await fetchWithTimeout(url);
   if(!res.ok) throw new Error("geocode failed");
   const data = await res.json();
@@ -266,7 +275,9 @@ async function handleSearch(){
   setBusy(true);
   setStatus(`<span class="spin">⏳</span> Recherche de l'adresse…`);
   try {
-    const g = await geocode(q + ", France");
+    const isPostcode = /^\d{5}$/.test(q);
+    let g = isPostcode ? await geocodePostcode(q) : await geocode(q + ", France");
+    if(!g && isPostcode) g = await geocode(q + ", France");
     if(!g){
       setBusy(false);
       setStatus("Aucune localisation trouvée pour cette recherche.", "err");
